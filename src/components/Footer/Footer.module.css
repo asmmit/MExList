@@ -1,0 +1,63 @@
+.footer {
+  width: 100%;
+  padding: 6rem var(--content-padding-x) 3rem;
+  background-color: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.wordmarkContainer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 3rem;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: clamp(4.5rem, 17vw, 15rem);
+  font-weight: 400;
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+  color: var(--fg);
+  text-transform: uppercase;
+  user-select: none;
+  opacity: 0.9;
+}
+
+.bottomBar {
+  width: 100%;
+  max-width: var(--max-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (min-width: 768px) {
+  .bottomBar {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+
+.credits {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-muted);
+}
+
+.tmdbNote {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-subtle);
+  max-width: 400px;
+}

@@ -1,0 +1,88 @@
+.cursorContainer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 999999;
+  mix-blend-mode: difference;
+  overflow: hidden;
+}
+
+/* Small central dot positioned directly under cursor */
+.cursorDot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background-color: #F2EFE8;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+
+/* Larger trailing ring with lerp interpolation */
+.cursorRing {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(242, 239, 232, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  will-change: transform, width, height, background-color;
+  transition: width var(--duration-fast) var(--ease-out-expo),
+              height var(--duration-fast) var(--ease-out-expo),
+              border-color var(--duration-fast) var(--ease-smooth),
+              background-color var(--duration-fast) var(--ease-smooth);
+}
+
+/* State: Hovering a movie card */
+.cursorRing[data-mode="card"] {
+  width: 72px;
+  height: 72px;
+  background-color: rgba(242, 239, 232, 0.15);
+  border-color: #F2EFE8;
+}
+
+/* State: Hovering a clickable button or link */
+.cursorRing[data-mode="button"] {
+  width: 22px;
+  height: 22px;
+  background-color: rgba(242, 239, 232, 0.3);
+  border-color: transparent;
+}
+
+/* Text label appearing inside the expanded ring over cards */
+.cursorLabel {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: #F2EFE8;
+  font-weight: 600;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.cursorRing[data-mode="card"] .cursorLabel {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Hide custom cursor on coarse touch screens or when user asks for reduced motion */
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .cursorContainer {
+    display: none !important;
+  }
+}
