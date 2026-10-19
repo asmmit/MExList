@@ -2,6 +2,49 @@ import { useEffect, useRef } from 'react';
 import Lenis from 'lenis';
 import { useReducedMotion } from './useReducedMotion';
 
+let activeLenisInstance: Lenis | null = null;
+
+/**
+ * Smoothly scrolls to a target selector, pixel offset, or DOM element using active Lenis engine.
+ * WHAT: Programmatic smooth scroll utility with graceful native fallback.
+ * WHY:  Allows navigation links and "Back to top" buttons to trigger silky momentum scrolling
+ *       without hard, disorienting viewport jumps.
+ */
+export function scrollToTarget(
+  target: string | number | HTMLElement,
+  options: { offset?: number; duration?: number } = {}
+) {
+  if (activeLenisInstance) {
+    activeLenisInstance.scrollTo(target, {
+      offset: options.offset ?? 0,
+      duration: options.duration ?? 1.2,
+    });
+  } else if (typeof window !== 'undefined') {
+    if (typeof target === 'number') {
+      window.scrollTo({ top: target, behavior: 'smooth' });
+    } else if (typeof target === 'string') {
+      const el = document.querySelector(target);
+      el?.scrollIntoView({ behavior: 'smooth' });
+    } else if (target instanceof HTMLElement) {
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+}
+
+/**
+ * Pauses the Lenis smooth-scroll engine.
+ */
+export function pauseLenis() {
+  activeLenisInstance?.stop();
+}
+
+/**
+ * Resumes the Lenis smooth-scroll engine.
+ */
+export function resumeLenis() {
+  activeLenisInstance?.start();
+}
+
 /**
  * useLenis Hook
  * WHAT: Configures and drives the Lenis smooth-scroll engine on the window.
@@ -26,6 +69,7 @@ export function useLenis() {
     });
 
     lenisRef.current = lenis;
+    activeLenisInstance = lenis;
 
     let rafId: number;
     function raf(time: number) {
@@ -39,6 +83,9 @@ export function useLenis() {
       cancelAnimationFrame(rafId);
       lenis.destroy();
       lenisRef.current = null;
+      if (activeLenisInstance === lenis) {
+        activeLenisInstance = null;
+      }
     };
   }, [prefersReduced]);
 

@@ -1,0 +1,170 @@
+.watchCard {
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: relative;
+  transition: transform var(--duration-fast) var(--ease-out-expo),
+              box-shadow var(--duration-fast) var(--ease-smooth);
+}
+
+.watchCard:hover {
+  transform: translateY(-2px);
+}
+
+/* Inverted theme (used on main off-white section) */
+.watchCard[data-theme="inverted"] {
+  background-color: var(--inv-surface);
+  border: 1px solid var(--inv-border);
+  color: var(--inv-fg);
+}
+
+.watchCard[data-theme="inverted"]:hover {
+  box-shadow: 0 8px 24px rgba(10, 10, 10, 0.08);
+}
+
+/* Dark theme (used in drawer) */
+.watchCard[data-theme="dark"] {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.watchCard[data-theme="dark"]:hover {
+  border-color: var(--border-focus);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.posterWrap {
+  width: 100%;
+  aspect-ratio: 2/3;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+  background-color: rgba(128, 128, 128, 0.1);
+  cursor: pointer;
+}
+
+.posterImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform var(--duration-normal) var(--ease-out-expo);
+}
+
+.posterWrap:hover .posterImg {
+  transform: scale(1.03);
+}
+
+.fallbackMonogram {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-family: var(--font-display);
+}
+
+.cardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cardTitle {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cardTitle:hover {
+  text-decoration: underline;
+}
+
+.cardMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-xs);
+  opacity: 0.7;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.actionBtn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.watchCard[data-theme="inverted"] .actionBtn {
+  border: 1px solid var(--inv-border);
+  background-color: transparent;
+  color: var(--inv-fg);
+}
+
+.watchCard[data-theme="inverted"] .actionBtn:hover {
+  background-color: var(--inv-fg);
+  color: var(--inv-bg);
+}
+
+.watchCard[data-theme="dark"] .actionBtn {
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--fg);
+}
+
+.watchCard[data-theme="dark"] .actionBtn:hover {
+  background-color: var(--fg);
+  color: var(--bg);
+}
+
+.removeBtn {
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--duration-fast) var(--ease-smooth);
+  background: transparent;
+}
+
+.watchCard[data-theme="inverted"] .removeBtn {
+  border: 1px solid var(--inv-border);
+  color: var(--inv-fg-muted);
+}
+
+.watchCard[data-theme="dark"] .removeBtn {
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.removeBtn:hover {
+  border-color: #ff4d4d !important;
+  color: #ff4d4d !important;
+  background-color: rgba(255, 77, 77, 0.12) !important;
+}

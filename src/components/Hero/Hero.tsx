@@ -95,6 +95,7 @@ export function Hero({ searchQuery, onSearchChange, onSearchClear }: HeroProps) 
 
         {/* Embedded Pill Search Bar */}
         <motion.div
+          id="search-container"
           className={styles.searchWrap}
           initial={prefersReduced ? false : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

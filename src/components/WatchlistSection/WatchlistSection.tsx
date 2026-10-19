@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Clock, Trash2 } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { Movie, WatchlistStatus } from '../../types/movie';
-import { getImageUrl } from '../../api/tmdb';
+import { WatchlistCard } from './WatchlistCard';
+import { scrollToTarget } from '../../hooks/useLenis';
 import styles from './WatchlistSection.module.css';
 
 interface WatchlistSectionProps {
@@ -12,20 +13,30 @@ interface WatchlistSectionProps {
 
 /**
  * WatchlistSection Component ("Your Reel")
- * WHAT: Inverted off-white section displaying movies saved to Plan to Watch and Watched.
- * WHY:  Provides high-contrast visual break on the page, with fluid Framer Motion layoutId
- *       tab transitions and optimistic state dispatchers.
+ *
+ * ARCHITECTURAL NOTES (Interview & Assessment Explainability):
+ * 1. WHY THE SENTINEL WAS MOVED:
+ *    Previously, placing the Watchlist section below an infinite-scrolling results grid caused a
+ *    reachability deadlock: the IntersectionObserver continuously loaded subsequent pages as the user
+ *    scrolled down, perpetually pushing the Watchlist further down and making it impossible to reach.
+ *    By reordering the narrative flow (Hero -> Your Reel -> Discover), the infinite scroll sentinel
+ *    is placed at the very end of Discover where nothing essential sits below it.
+ *
+ * 2. WHY THE DRAWER DOES NOT DEPEND ON PAGE SCROLL POSITION:
+ *    A dedicated slide-over drawer (opened via the persistent floating pill button) allows users to
+ *    review, toggle, and curate their reel at ANY scroll depth without losing their place in an
+ *    endless stream of 100+ discovered films.
  */
 export function WatchlistSection({ onSelectMovie }: WatchlistSectionProps) {
   const [activeTab, setActiveTab] = useState<WatchlistStatus>('plan_to_watch');
-  const {
-    planToWatchList,
-    watchedList,
-    toggleWatchlistStatus,
-    removeFromWatchlist,
-  } = useWatchlist();
+  const { planToWatchList, watchedList, state } = useWatchlist();
 
   const currentList = activeTab === 'plan_to_watch' ? planToWatchList : watchedList;
+  const isTotallyEmpty = state.order.length === 0;
+
+  const handleScrollToSearch = () => {
+    scrollToTarget('#search-container', { offset: -60 });
+  };
 
   return (
     <section className={styles.section} id="watchlist-section" aria-label="Your Reel Watchlist">
@@ -82,108 +93,38 @@ export function WatchlistSection({ onSelectMovie }: WatchlistSectionProps) {
         {currentList.length === 0 ? (
           <div className={styles.emptyReel}>
             <h3 className={styles.emptyTitle}>
-              {activeTab === 'plan_to_watch'
-                ? 'Your Reel awaits its first entry.'
+              {isTotallyEmpty
+                ? 'Nothing saved yet.'
+                : activeTab === 'plan_to_watch'
+                ? 'No planned features.'
                 : 'No finished features recorded yet.'}
             </h3>
             <p className={styles.emptyText}>
-              {activeTab === 'plan_to_watch'
-                ? 'Hover or tap any movie card above and add it to your Reel to build your curated queue.'
-                : 'Mark films as watched once completed to preserve your cinema chronology.'}
+              {isTotallyEmpty
+                ? 'Nothing saved yet. Add a movie from Discover.'
+                : activeTab === 'plan_to_watch'
+                ? 'Add movies from Discover below to queue your next cinema screening.'
+                : 'Mark films as watched to preserve your cinema chronology.'}
             </p>
+            <button
+              type="button"
+              className={styles.emptyBtn}
+              onClick={handleScrollToSearch}
+            >
+              <Compass size={13} style={{ marginRight: '0.45rem', verticalAlign: '-1px' }} />
+              <span>Explore Discover Archives</span>
+            </button>
           </div>
         ) : (
           <div className={styles.grid}>
-            {currentList.map(({ movie, status }) => {
-              const poster = getImageUrl(movie.poster_path, 'w300');
-              const year = movie.release_date ? movie.release_date.slice(0, 4) : '—';
-
-              return (
-                <article key={movie.id} className={styles.watchCard}>
-                  <div
-                    className={styles.posterWrap}
-                    onClick={() => onSelectMovie?.(movie)}
-                    style={{ cursor: 'pointer' }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`View details for ${movie.title}`}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        onSelectMovie?.(movie);
-                      }
-                    }}
-                  >
-                    {poster ? (
-                      <img
-                        src={poster}
-                        alt={`Poster for ${movie.title}`}
-                        className={styles.posterImg}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '1.5rem',
-                          fontFamily: 'var(--font-display)',
-                        }}
-                      >
-                        {movie.title.charAt(0)}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className={styles.cardContent}>
-                    <h3 className={styles.cardTitle} title={movie.title}>
-                      {movie.title}
-                    </h3>
-                    <div className={styles.cardMeta}>
-                      <span>{year}</span>
-                      <span>★ {movie.vote_average ? movie.vote_average.toFixed(1) : 'NR'}</span>
-                    </div>
-
-                    <div className={styles.actions}>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => toggleWatchlistStatus(movie.id)}
-                        aria-label={
-                          status === 'plan_to_watch'
-                            ? `Mark ${movie.title} as watched`
-                            : `Move ${movie.title} to plan to watch`
-                        }
-                      >
-                        {status === 'plan_to_watch' ? (
-                          <>
-                            <Check size={12} aria-hidden="true" />
-                            <span>Mark Watched</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clock size={12} aria-hidden="true" />
-                            <span>Plan Again</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        className={styles.removeBtn}
-                        onClick={() => removeFromWatchlist(movie.id)}
-                        aria-label={`Remove ${movie.title} from Reel`}
-                        title="Remove from Reel"
-                      >
-                        <Trash2 size={13} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+            {currentList.map((item) => (
+              <WatchlistCard
+                key={item.movie.id}
+                item={item}
+                theme="inverted"
+                onSelectMovie={onSelectMovie}
+              />
+            ))}
           </div>
         )}
       </div>

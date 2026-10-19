@@ -1,0 +1,38 @@
+.backToTopBtn {
+  position: fixed;
+  bottom: 5.75rem;
+  right: 2rem;
+  z-index: 9980;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--border-focus);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.backToTopBtn:hover {
+  background-color: var(--fg);
+  color: var(--bg);
+  transform: translateY(-2px);
+}
+
+.backToTopBtn:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+}
+
+@media (max-width: 768px) {
+  .backToTopBtn {
+    bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    right: 1.25rem;
+    width: 40px;
+    height: 40px;
+  }
+}
