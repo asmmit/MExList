@@ -1,7 +1,9 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Compass } from 'lucide-react';
 import { SearchBar } from '../SearchBar/SearchBar';
+import { MagneticField } from '../MagneticField/MagneticField';
+import { MagneticFieldMode } from '../../hooks/useMagneticField';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import styles from './Hero.module.css';
 
@@ -19,11 +21,14 @@ const HEADLINE_LINES = [
 
 /**
  * Hero Component
- * WHAT: Storytelling centerpiece with masked word-by-word reveal and cursor spotlight.
- * WHY:  Sets the cinematic tone immediately upon visit, drawing the eye toward the search interface.
+ * WHAT: Storytelling centerpiece with masked word-by-word reveal, cursor spotlight,
+ *       and an interactive canvas-based "Magnetic Field" background.
+ * WHY:  Sets the cinematic tone immediately upon visit, drawing the eye toward the search interface
+ *       with physical needle dynamics responding to user movement.
  */
 export function Hero({ searchQuery, onSearchChange, onSearchClear }: HeroProps) {
   const heroRef = useRef<HTMLElement>(null);
+  const [fieldMode, setFieldMode] = useState<MagneticFieldMode>('pointer');
   const prefersReduced = useReducedMotion();
 
   // Update spotlight coordinates via CSS variables
@@ -36,6 +41,10 @@ export function Hero({ searchQuery, onSearchChange, onSearchClear }: HeroProps) 
     heroRef.current.style.setProperty('--my', `${y}px`);
   }, []);
 
+  const toggleFieldMode = () => {
+    setFieldMode((prev) => (prev === 'pointer' ? 'dipole' : 'pointer'));
+  };
+
   return (
     <section
       ref={heroRef}
@@ -43,6 +52,22 @@ export function Hero({ searchQuery, onSearchChange, onSearchClear }: HeroProps) 
       onMouseMove={handleMouseMove}
       aria-label="Introduction and Search"
     >
+      {/* Interactive Ferromagnetic Field Canvas Background */}
+      <MagneticField containerRef={heroRef} mode={fieldMode} />
+
+      {/* Subtle Mode Toggle Button */}
+      <button
+        type="button"
+        className={styles.modeToggleBtn}
+        onClick={toggleFieldMode}
+        aria-label={`Toggle magnetic field mode (currently ${fieldMode})`}
+        data-cursor-button="true"
+      >
+        <Compass size={12} aria-hidden="true" />
+        <span>Field: <strong>{fieldMode === 'pointer' ? 'Pointer' : 'Dipole'}</strong></span>
+      </button>
+
+      {/* Cursor-driven radial spotlight mask */}
       <div className={styles.spotlight} aria-hidden="true" />
 
       <div className={styles.content}>

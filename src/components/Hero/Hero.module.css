@@ -10,6 +10,44 @@
   overflow: hidden;
 }
 
+.modeToggleBtn {
+  position: absolute;
+  top: 1.5rem;
+  right: var(--content-padding-x);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background-color: rgba(18, 18, 18, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.modeToggleBtn:hover {
+  color: var(--fg);
+  border-color: var(--border-focus);
+}
+
+.modeToggleBtn:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+}
+
+.modeToggleBtn strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
 /* Cursor-driven radial spotlight mask */
 .spotlight {
   position: absolute;
