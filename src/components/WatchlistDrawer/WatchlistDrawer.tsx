@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Compass } from 'lucide-react';
 import { useWatchlist } from '../../hooks/useWatchlist';
-import { WatchlistStatus, Movie } from '../../types/movie';
+import { WatchlistStatus, MediaItem } from '../../types/media';
 import { WatchlistCard } from '../WatchlistSection/WatchlistCard';
 import { scrollToTarget } from '../../hooks/useLenis';
 import styles from './WatchlistDrawer.module.css';
@@ -10,7 +10,7 @@ import styles from './WatchlistDrawer.module.css';
 interface WatchlistDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectMovie?: (movie: Movie) => void;
+  onSelectMovie?: (movie: MediaItem) => void;
 }
 
 /**
@@ -200,7 +200,7 @@ export function WatchlistDrawer({
                 <div className={styles.drawerGrid}>
                   {currentList.map((item) => (
                     <WatchlistCard
-                      key={item.movie.id}
+                      key={item.key}
                       item={item}
                       theme="dark"
                       onSelectMovie={(movie) => {

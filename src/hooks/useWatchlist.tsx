@@ -7,17 +7,20 @@ import {
   useRef,
   ReactNode,
 } from 'react';
-import { Movie, WatchlistItem, WatchlistState, WatchlistAction, WatchlistStatus } from '../types/movie';
+import {
+  MediaItem,
+  WatchlistItem,
+  WatchlistState,
+  WatchlistAction,
+  WatchlistStatus,
+  MediaType,
+  getMediaKey,
+} from '../types/media';
 import { useToast } from '../context/ToastContext';
 
-/**
- * Storage Key for LocalStorage Persistence
- */
-const WATCHLIST_STORAGE_KEY = 'the_reel_watchlist_v1';
+const WATCHLIST_STORAGE_KEY_V2 = 'the_reel_watchlist_v2';
+const LEGACY_STORAGE_KEY_V1 = 'the_reel_watchlist_v1';
 
-/**
- * Initial empty watchlist state
- */
 const initialState: WatchlistState = {
   items: {},
   order: [],
@@ -25,60 +28,65 @@ const initialState: WatchlistState = {
 
 /**
  * Watchlist Reducer
- * WHAT: Deterministic pure state reducer for all Watchlist modifications.
- * WHY:  Centralizes state mutations, eliminates duplicate logic, and guarantees
- *       atomic rollbacks when optimistic writes fail.
  *
- * STATE ARCHITECTURE NOTE (Interview Explainability):
- * Why useReducer + Context over Redux/Zustand?
- * 1. Zero Extra Dependencies: Keeps bundle size minimal without external state libraries.
- * 2. Scoped Domain: Watchlist is the only persistent cross-component domain in the app;
- *    search UI state is transient and properly lives in local component state to prevent
- *    costly global re-renders.
- * 3. Predictability: useReducer provides identical action-driven determinism and time-travel/rollback
- *    capability as Redux without the setup overhead.
+ * ARCHITECTURAL EXPLAINABILITY (Interview Deep Dive):
+ * WHY A COMPOSITE KEY IS NEEDED:
+ * TMDB uses independent auto-incremented database identifiers for movies and TV series.
+ * A blockbuster movie and a TV series can both have ID #157336.
+ * Identifying items purely by numeric ID causes state collisions, where adding a TV series
+ * could overwrite or block an existing movie.
+ * By constructing a composite key `${mediaType}-${id}` (e.g. "movie-157336" vs "tv-157336"),
+ * uniqueness is guaranteed across all dictionary lookups, deduplication, and removals.
  */
-export function watchlistReducer(state: WatchlistState, action: WatchlistAction): WatchlistState {
+export function watchlistReducer(
+  state: WatchlistState,
+  action: WatchlistAction
+): WatchlistState {
   switch (action.type) {
     case 'HYDRATE':
       return action.payload;
 
     case 'ADD': {
-      const { movie, status = 'plan_to_watch' } = action;
-      // Prevent duplicates by movie id
-      if (state.items[movie.id]) {
+      const { item, status = 'plan_to_watch' } = action;
+      const key = getMediaKey(item.mediaType, item.id);
+
+      // Prevent duplicates by composite key
+      if (state.items[key]) {
         return state;
       }
+
       const newItem: WatchlistItem = {
-        movie,
+        key,
+        item,
         status,
         addedAt: Date.now(),
       };
+
       return {
         items: {
           ...state.items,
-          [movie.id]: newItem,
+          [key]: newItem,
         },
-        order: [movie.id, ...state.order],
+        order: [key, ...state.order],
       };
     }
 
     case 'REMOVE': {
-      const { movieId } = action;
-      if (!state.items[movieId]) {
+      const { mediaKey } = action;
+      if (!state.items[mediaKey]) {
         return state;
       }
       const newItems = { ...state.items };
-      delete newItems[movieId];
+      delete newItems[mediaKey];
       return {
         items: newItems,
-        order: state.order.filter((id) => id !== movieId),
+        order: state.order.filter((k) => k !== mediaKey),
       };
     }
 
     case 'TOGGLE_STATUS': {
-      const { movieId } = action;
-      const target = state.items[movieId];
+      const { mediaKey } = action;
+      const target = state.items[mediaKey];
       if (!target) return state;
 
       const nextStatus: WatchlistStatus =
@@ -88,7 +96,7 @@ export function watchlistReducer(state: WatchlistState, action: WatchlistAction)
         ...state,
         items: {
           ...state.items,
-          [movieId]: {
+          [mediaKey]: {
             ...target,
             status: nextStatus,
           },
@@ -97,15 +105,15 @@ export function watchlistReducer(state: WatchlistState, action: WatchlistAction)
     }
 
     case 'SET_STATUS': {
-      const { movieId, status } = action;
-      const target = state.items[movieId];
+      const { mediaKey, status } = action;
+      const target = state.items[mediaKey];
       if (!target) return state;
 
       return {
         ...state,
         items: {
           ...state.items,
-          [movieId]: {
+          [mediaKey]: {
             ...target,
             status,
           },
@@ -121,78 +129,136 @@ export function watchlistReducer(state: WatchlistState, action: WatchlistAction)
   }
 }
 
-/**
- * Context Interface
- */
 interface WatchlistContextValue {
   state: WatchlistState;
   itemsList: WatchlistItem[];
   planToWatchList: WatchlistItem[];
   watchedList: WatchlistItem[];
-  isInWatchlist: (movieId: number) => boolean;
-  getWatchlistStatus: (movieId: number) => WatchlistStatus | null;
-  addToWatchlist: (movie: Movie, status?: WatchlistStatus) => void;
-  removeFromWatchlist: (movieId: number) => void;
-  toggleWatchlistStatus: (movieId: number) => void;
+  isInWatchlist: (mediaType: MediaType, id: number) => boolean;
+  getWatchlistStatus: (mediaType: MediaType, id: number) => WatchlistStatus | null;
+  addToWatchlist: (item: MediaItem, status?: WatchlistStatus) => void;
+  removeFromWatchlist: (mediaKeyOrId: string | number, mediaType?: MediaType) => void;
+  toggleWatchlistStatus: (mediaKeyOrId: string | number, mediaType?: MediaType) => void;
 }
 
 const WatchlistContext = createContext<WatchlistContextValue | undefined>(undefined);
 
 /**
- * WatchlistProvider
- * WHAT: Wraps the app, provides watchlist actions, synchronizes localStorage with optimistic rollback.
- * WHY:  Ensures state reflects instantly on screen before background disk I/O, and rolls back
- *       cleanly if localStorage quota or permissions fail.
+ * Migration Loader
+ * WHAT: Loads and migrates saved items from localStorage.
+ * WHY:  Guarantees that items saved in earlier phases (without mediaType or keyed by numeric ID)
+ *       are seamlessly upgraded to composite keys with mediaType="movie" without losing any user data.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateStoredWatchlist(storedRaw: any): WatchlistState | null {
+  if (!storedRaw || typeof storedRaw !== 'object') return null;
+
+  const migratedItems: Record<string, WatchlistItem> = {};
+  const migratedOrder: string[] = [];
+
+  const rawItems = storedRaw.items || {};
+  const rawOrder = Array.isArray(storedRaw.order) ? storedRaw.order : Object.keys(rawItems);
+
+  rawOrder.forEach((rawKey: string | number) => {
+    const rawEntry = rawItems[rawKey];
+    if (!rawEntry) return;
+
+    // Handle legacy schema where item was stored in .movie or had no mediaType
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const legacyItem: any = rawEntry.item || rawEntry.movie || rawEntry;
+    const mediaType: MediaType = legacyItem.mediaType || 'movie';
+    const id: number = Number(legacyItem.id || rawKey);
+    const key = getMediaKey(mediaType, id);
+
+    const title = legacyItem.title || legacyItem.name || 'Untitled';
+    const rawDate = legacyItem.release_date || legacyItem.first_air_date || legacyItem.year || '';
+    const year = rawDate.length > 4 ? rawDate.slice(0, 4) : rawDate || '—';
+
+    const normalizedItem: MediaItem = {
+      id,
+      mediaType,
+      title,
+      year,
+      posterPath: legacyItem.posterPath || legacyItem.poster_path || null,
+      backdropPath: legacyItem.backdropPath || legacyItem.backdrop_path || null,
+      rating: typeof legacyItem.rating === 'number' ? legacyItem.rating : (legacyItem.vote_average || 0),
+      voteCount: legacyItem.voteCount || legacyItem.vote_count || 0,
+      overview: legacyItem.overview || '',
+    };
+
+    migratedItems[key] = {
+      key,
+      item: normalizedItem,
+      status: rawEntry.status === 'watched' ? 'watched' : 'plan_to_watch',
+      addedAt: rawEntry.addedAt || Date.now(),
+    };
+
+    if (!migratedOrder.includes(key)) {
+      migratedOrder.push(key);
+    }
+  });
+
+  return {
+    items: migratedItems,
+    order: migratedOrder,
+  };
+}
+
 export function WatchlistProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(watchlistReducer, initialState);
   const { showToast } = useToast();
-  const isHydratedRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // 1. Hydrate state from localStorage on initial mount
+  // 1. Initial Load with Schema Migration
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(WATCHLIST_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as WatchlistState;
-        if (parsed && typeof parsed.items === 'object' && Array.isArray(parsed.order)) {
-          dispatch({ type: 'HYDRATE', payload: parsed });
+      // Try V2 format first
+      let storedStr = localStorage.getItem(WATCHLIST_STORAGE_KEY_V2);
+      let isMigrating = false;
+
+      // Fallback to V1 legacy format
+      if (!storedStr) {
+        storedStr = localStorage.getItem(LEGACY_STORAGE_KEY_V1);
+        isMigrating = true;
+      }
+
+      if (storedStr) {
+        const parsed = JSON.parse(storedStr);
+        const migrated = migrateStoredWatchlist(parsed);
+
+        if (migrated) {
+          dispatch({ type: 'HYDRATE', payload: migrated });
+
+          // Persist upgraded schema immediately
+          if (isMigrating) {
+            localStorage.setItem(WATCHLIST_STORAGE_KEY_V2, JSON.stringify(migrated));
+          }
         }
       }
     } catch (err) {
-      console.warn('Failed to parse watchlist from localStorage:', err);
-    } finally {
-      isHydratedRef.current = true;
+      console.warn('Failed to hydrate/migrate watchlist from localStorage:', err);
     }
   }, []);
 
   /**
-   * Helper: Optimistic LocalStorage Sync with Rollback
-   * WHAT: Executes the reducer action immediately, then commits to localStorage.
-   * WHY:  If writing to localStorage throws (e.g. QuotaExceededError or private mode block),
-   *       rolls back React state to previous snapshot and alerts the user via Toast.
+   * Optimistic LocalStorage Sync with Rollback
    */
   const performOptimisticAction = useCallback(
     (action: WatchlistAction, successToastMessage?: string) => {
       const snapshot = stateRef.current;
-      
-      // Step A: Apply mutation immediately (Optimistic Update)
+
       dispatch(action);
 
-      // Compute prospective next state to test storage write
       const nextState = watchlistReducer(snapshot, action);
 
-      // Step B: Synchronize to LocalStorage
       try {
-        localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(nextState));
+        localStorage.setItem(WATCHLIST_STORAGE_KEY_V2, JSON.stringify(nextState));
         if (successToastMessage) {
           showToast(successToastMessage, 'default');
         }
       } catch (storageError) {
         console.error('LocalStorage write failed. Rolling back optimistic update:', storageError);
-        // Step C: Roll back state instantly
         dispatch({ type: 'ROLLBACK', previousState: snapshot });
         showToast('Storage quota exceeded. Reverted changes.', 'error');
       }
@@ -200,63 +266,85 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     [showToast]
   );
 
-  // Action: Add movie
+  // Helper to normalize keyOrId
+  const resolveKey = useCallback(
+    (keyOrId: string | number, mediaType: MediaType = 'movie'): string => {
+      if (typeof keyOrId === 'string' && keyOrId.includes('-')) {
+        return keyOrId;
+      }
+      return getMediaKey(mediaType, Number(keyOrId));
+    },
+    []
+  );
+
+  // Action: Add Item (Movie or TV series)
   const addToWatchlist = useCallback(
-    (movie: Movie, status: WatchlistStatus = 'plan_to_watch') => {
-      if (stateRef.current.items[movie.id]) {
+    (item: MediaItem, status: WatchlistStatus = 'plan_to_watch') => {
+      const key = getMediaKey(item.mediaType, item.id);
+      if (stateRef.current.items[key]) {
         showToast('Already in your list', 'warning');
         return;
       }
+      const label = item.mediaType === 'tv' ? 'Series' : 'Film';
       performOptimisticAction(
-        { type: 'ADD', movie, status },
-        `Added “${movie.title}” to Reel`
+        { type: 'ADD', item, status },
+        `Added ${label} “${item.title}” to Reel`
       );
     },
     [performOptimisticAction, showToast]
   );
 
-  // Action: Remove movie
+  // Action: Remove Item
   const removeFromWatchlist = useCallback(
-    (movieId: number) => {
-      const target = stateRef.current.items[movieId];
-      const title = target?.movie.title || 'Movie';
+    (keyOrId: string | number, mediaType: MediaType = 'movie') => {
+      const key = resolveKey(keyOrId, mediaType);
+      const target = stateRef.current.items[key];
+      const title = target?.item.title || 'Title';
       performOptimisticAction(
-        { type: 'REMOVE', movieId },
+        { type: 'REMOVE', mediaKey: key },
         `Removed “${title}”`
       );
     },
-    [performOptimisticAction]
+    [performOptimisticAction, resolveKey]
   );
 
-  // Action: Toggle status between 'plan_to_watch' and 'watched'
+  // Action: Toggle Status
   const toggleWatchlistStatus = useCallback(
-    (movieId: number) => {
-      const target = stateRef.current.items[movieId];
+    (keyOrId: string | number, mediaType: MediaType = 'movie') => {
+      const key = resolveKey(keyOrId, mediaType);
+      const target = stateRef.current.items[key];
       if (!target) return;
       const willBeWatched = target.status === 'plan_to_watch';
       performOptimisticAction(
-        { type: 'TOGGLE_STATUS', movieId },
-        willBeWatched ? `Marked “${target.movie.title}” as Watched` : `Moved “${target.movie.title}” to Plan to Watch`
+        { type: 'TOGGLE_STATUS', mediaKey: key },
+        willBeWatched
+          ? `Marked “${target.item.title}” as Watched`
+          : `Moved “${target.item.title}” to Plan to Watch`
       );
     },
-    [performOptimisticAction]
+    [performOptimisticAction, resolveKey]
   );
 
   // Query helpers
   const isInWatchlist = useCallback(
-    (movieId: number) => Boolean(state.items[movieId]),
+    (mediaType: MediaType, id: number) => {
+      const key = getMediaKey(mediaType, id);
+      return Boolean(state.items[key]);
+    },
     [state.items]
   );
 
   const getWatchlistStatus = useCallback(
-    (movieId: number) => state.items[movieId]?.status ?? null,
+    (mediaType: MediaType, id: number) => {
+      const key = getMediaKey(mediaType, id);
+      return state.items[key]?.status ?? null;
+    },
     [state.items]
   );
 
-  // Derived lists sorted by insertion order
-  const itemsList = state.order.map((id) => state.items[id]).filter(Boolean);
-  const planToWatchList = itemsList.filter((item) => item.status === 'plan_to_watch');
-  const watchedList = itemsList.filter((item) => item.status === 'watched');
+  const itemsList = state.order.map((key) => state.items[key]).filter(Boolean);
+  const planToWatchList = itemsList.filter((i) => i.status === 'plan_to_watch');
+  const watchedList = itemsList.filter((i) => i.status === 'watched');
 
   const value: WatchlistContextValue = {
     state,
@@ -273,11 +361,6 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   return <WatchlistContext.Provider value={value}>{children}</WatchlistContext.Provider>;
 }
 
-/**
- * useWatchlist Hook
- * WHAT: Custom hook exposing watchlist state and optimistic dispatchers.
- * WHY:  Provides a clean, type-safe API for components to interact with the Reel.
- */
 export function useWatchlist(): WatchlistContextValue {
   const context = useContext(WatchlistContext);
   if (!context) {

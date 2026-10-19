@@ -1,29 +1,17 @@
-import { Movie, MovieDetails, TMDBResponse } from '../types/movie';
-import { FALLBACK_MOVIES, filterMockMovies } from './mockData';
+import { MediaItem, MediaDetails, TMDBResponse, MediaType } from '../types/media';
+import { FALLBACK_CATALOG, filterMockMedia } from './mockData';
 
-/**
- * TMDB API Client Configuration
- * Base URLs for REST endpoints and image CDN delivery.
- */
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
 
-/**
- * Access the API key defined in .env via Vite's import.meta.env
- */
 const API_KEY = import.meta.env.VITE_TMDB_KEY as string | undefined;
 
-/**
- * Helper to determine if we have a valid API key configured.
- */
 export const hasValidApiKey = (): boolean => {
   return Boolean(API_KEY && API_KEY.trim() !== '' && API_KEY !== 'your_tmdb_api_key_here');
 };
 
 /**
  * Formats a TMDB poster or backdrop path to its absolute CDN URL.
- * WHAT: Appends image path to the appropriate TMDB image size bucket.
- * WHY:  Centralizes image URL creation and prevents layout breaks when paths are null.
  */
 export function getImageUrl(
   path: string | null,
@@ -35,11 +23,54 @@ export function getImageUrl(
 }
 
 /**
+ * Raw TMDB Multi-Search Result interface
+ */
+interface RawTMDBMultiItem {
+  id: number;
+  media_type: 'movie' | 'tv' | 'person';
+  title?: string;
+  name?: string;
+  release_date?: string;
+  first_air_date?: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  vote_average?: number;
+  vote_count?: number;
+  overview?: string;
+}
+
+/**
+ * Normalization Boundary Helper
+ *
+ * WHY THE API RESPONSE IS NORMALIZED IN ONE PLACE (Interview Explainability):
+ * TMDB's data contract diverges significantly across media types:
+ * - Movies expose: `title`, `release_date`, `runtime`
+ * - TV Series expose: `name`, `first_air_date`, `episode_run_time`, `number_of_seasons`
+ * Normalizing immediately upon network ingestion ensures all downstream React components,
+ * hooks, filters, and reducers operate against one single, strongly-typed `MediaItem` contract.
+ * This completely eliminates defensive fallback branching (`m.title || m.name`) across the UI.
+ */
+export function normalizeTMDBItem(raw: RawTMDBMultiItem): MediaItem {
+  const mediaType: MediaType = raw.media_type === 'tv' ? 'tv' : 'movie';
+  const title = (raw.title || raw.name || 'Untitled Feature').trim();
+  const rawDate = raw.release_date || raw.first_air_date || '';
+  const year = rawDate ? rawDate.slice(0, 4) : '—';
+
+  return {
+    id: raw.id,
+    mediaType,
+    title,
+    year,
+    posterPath: raw.poster_path ?? null,
+    backdropPath: raw.backdrop_path ?? null,
+    rating: typeof raw.vote_average === 'number' ? raw.vote_average : 0,
+    voteCount: raw.vote_count ?? 0,
+    overview: raw.overview ?? '',
+  };
+}
+
+/**
  * Standardized Fetch Wrapper with AbortSignal & Status Validation
- * WHAT: Dispatches network requests with custom headers, query params, and signal propagation.
- * WHY:  Ensures that HTTP errors (like 401 Unauthorized or 404 Not Found) are not treated
- *       as successful responses by fetch(), and guarantees that cancelled requests
- *       bubble up their AbortError for caller cancellation loops.
  */
 async function fetchFromTMDB<T>(
   endpoint: string,
@@ -47,7 +78,7 @@ async function fetchFromTMDB<T>(
   signal?: AbortSignal
 ): Promise<T> {
   const url = new URL(`${BASE_URL}${endpoint}`);
-  
+
   if (API_KEY) {
     url.searchParams.set('api_key', API_KEY);
   }
@@ -60,7 +91,7 @@ async function fetchFromTMDB<T>(
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       signal,
     });
@@ -72,34 +103,31 @@ async function fetchFromTMDB<T>(
 
     return await response.json();
   } catch (error: unknown) {
-    // Re-throw AbortError untouched so calling hooks can identify intentional cancellations
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error;
     }
-    // Re-throw genuine network or server errors
     throw error;
   }
 }
 
 /**
- * Searches movies by user query with page offset.
- * WHAT: Calls TMDB /search/movie or falls back to curated offline catalog.
- * WHY:  Accepts an AbortSignal so rapid keystroke searches automatically cancel
- *       in-flight requests, avoiding stale data and race conditions.
+ * Searches across both Movies and TV Series using /search/multi.
+ * WHAT: Queries TMDB /search/multi, filters out non-cinematic entities ("person"),
+ *       and normalizes remaining items into the MediaItem contract.
+ * WHY:  Accepts AbortSignal to enable race-condition cancellation on rapid keystrokes.
  */
 export async function searchMovies(
   query: string,
   page = 1,
   signal?: AbortSignal
-): Promise<TMDBResponse<Movie>> {
+): Promise<TMDBResponse<MediaItem>> {
   if (!hasValidApiKey() || !navigator.onLine) {
-    // Provide simulated latency for authentic UI feel during local/offline testing
     await new Promise((resolve) => setTimeout(resolve, 150));
-    return filterMockMovies(query, page);
+    return filterMockMedia(query, page);
   }
 
-  return fetchFromTMDB<TMDBResponse<Movie>>(
-    '/search/movie',
+  const response = await fetchFromTMDB<TMDBResponse<RawTMDBMultiItem>>(
+    '/search/multi',
     {
       query: query.trim(),
       page,
@@ -108,71 +136,155 @@ export async function searchMovies(
     },
     signal
   );
+
+  // Filter to only movie or tv media types (drop "person" entities)
+  const validItems = (response.results || []).filter(
+    (item) => item.media_type === 'movie' || item.media_type === 'tv'
+  );
+
+  return {
+    page: response.page,
+    results: validItems.map(normalizeTMDBItem),
+    total_pages: response.total_pages,
+    total_results: response.total_results,
+  };
 }
 
 /**
- * Fetches trending or popular movies to populate the initial "Discover" state.
- * WHAT: Calls TMDB /trending/movie/day or returns the fallback showcase.
- * WHY:  Ensures the page displays a curated visual experience upon initial load
- *       before the user has typed anything into the search input.
+ * Fetches combined trending movies and TV series for the initial Discover grid.
  */
 export async function getTrendingMovies(
   page = 1,
   signal?: AbortSignal
-): Promise<TMDBResponse<Movie>> {
+): Promise<TMDBResponse<MediaItem>> {
   if (!hasValidApiKey() || !navigator.onLine) {
     await new Promise((resolve) => setTimeout(resolve, 100));
-    return filterMockMovies('', page);
+    return filterMockMedia('', page);
   }
 
-  return fetchFromTMDB<TMDBResponse<Movie>>(
-    '/trending/movie/day',
+  const response = await fetchFromTMDB<TMDBResponse<RawTMDBMultiItem>>(
+    '/trending/all/day',
     {
       page,
       language: 'en-US',
     },
     signal
   );
+
+  const validItems = (response.results || []).filter(
+    (item) => item.media_type === 'movie' || item.media_type === 'tv'
+  );
+
+  return {
+    page: response.page,
+    results: validItems.map(normalizeTMDBItem),
+    total_pages: response.total_pages,
+    total_results: response.total_results,
+  };
 }
 
 /**
- * Retrieves full movie details including runtime, genres, and cast roster.
- * WHAT: Calls TMDB /movie/{id} with append_to_response=credits.
- * WHY:  Powers the rich shared-element Detail Modal with deep metadata without
- *       making multiple roundtrip network calls.
+ * Fetches detailed metadata for a film or TV series, normalizing runtime, seasons, and creators.
+ * WHAT: Calls /movie/{id} or /tv/{id} with append_to_response=credits based on mediaType.
+ * WHY:  Enriches the detail modal with medium-specific fields (e.g. number of seasons, episodes).
  */
-export async function getMovieDetails(
+export async function getMediaDetails(
+  mediaType: MediaType,
   id: number,
   signal?: AbortSignal
-): Promise<MovieDetails> {
+): Promise<MediaDetails> {
   if (!hasValidApiKey() || !navigator.onLine) {
     await new Promise((resolve) => setTimeout(resolve, 120));
-    const found = FALLBACK_MOVIES.find((m) => m.id === id);
+    const found = FALLBACK_CATALOG.find((m) => m.id === id && m.mediaType === mediaType);
     if (found) return found;
-    // If not in primary curated list, construct a graceful fallback detail object
+
     return {
       id,
-      title: 'Cinematic Feature',
+      mediaType,
+      title: mediaType === 'tv' ? 'Television Series' : 'Cinematic Feature',
+      year: '2024',
       overview: 'An enigmatic production currently residing in our archives.',
-      poster_path: null,
-      backdrop_path: null,
-      release_date: '2024-01-01',
-      vote_average: 8.0,
-      vote_count: 100,
-      runtime: 120,
+      posterPath: null,
+      backdropPath: null,
+      rating: 8.0,
+      voteCount: 100,
+      runtime: mediaType === 'tv' ? 50 : 120,
+      numberOfSeasons: mediaType === 'tv' ? 1 : undefined,
+      numberOfEpisodes: mediaType === 'tv' ? 10 : undefined,
+      creator: mediaType === 'tv' ? 'Series Creator' : 'Film Director',
       tagline: 'A story yet to be fully revealed.',
       status: 'Released',
-      genres: [{ id: 1, name: 'Cinema' }],
+      genres: [{ id: 1, name: mediaType === 'tv' ? 'Drama Series' : 'Cinema' }],
       credits: { cast: [], crew: [] },
     };
   }
 
-  return fetchFromTMDB<MovieDetails>(
-    `/movie/${id}`,
+  const endpoint = mediaType === 'tv' ? `/tv/${id}` : `/movie/${id}`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw: any = await fetchFromTMDB<any>(
+    endpoint,
     {
       append_to_response: 'credits',
       language: 'en-US',
     },
     signal
   );
+
+  const title = (raw.title || raw.name || 'Untitled').trim();
+  const rawDate = raw.release_date || raw.first_air_date || '';
+  const year = rawDate ? rawDate.slice(0, 4) : '—';
+
+  // Normalize runtime: movie gives runtime in minutes; tv gives episode_run_time array
+  let runtime: number | null = null;
+  if (typeof raw.runtime === 'number') {
+    runtime = raw.runtime;
+  } else if (Array.isArray(raw.episode_run_time) && raw.episode_run_time.length > 0) {
+    runtime = raw.episode_run_time[0];
+  }
+
+  // Creator normalization: tv uses created_by array; movie uses Director from crew
+  let creator: string | undefined;
+  if (mediaType === 'tv') {
+    if (Array.isArray(raw.created_by) && raw.created_by.length > 0) {
+      creator = raw.created_by[0].name;
+    } else {
+      creator = raw.credits?.crew?.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c: any) => c.job === 'Executive Producer' || c.job === 'Creator'
+      )?.name;
+    }
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    creator = raw.credits?.crew?.find((c: any) => c.job === 'Director')?.name;
+  }
+
+  return {
+    id: raw.id,
+    mediaType,
+    title,
+    year,
+    posterPath: raw.poster_path ?? null,
+    backdropPath: raw.backdrop_path ?? null,
+    rating: typeof raw.vote_average === 'number' ? raw.vote_average : 0,
+    voteCount: raw.vote_count ?? 0,
+    overview: raw.overview ?? '',
+    runtime,
+    numberOfSeasons: raw.number_of_seasons,
+    numberOfEpisodes: raw.number_of_episodes,
+    creator,
+    genres: raw.genres || [],
+    tagline: raw.tagline || null,
+    status: raw.status || 'Released',
+    credits: raw.credits,
+  };
+}
+
+/**
+ * Backward compatibility alias for single-id movie requests
+ */
+export async function getMovieDetails(
+  id: number,
+  signal?: AbortSignal
+): Promise<MediaDetails> {
+  return getMediaDetails('movie', id, signal);
 }

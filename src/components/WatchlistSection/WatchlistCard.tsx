@@ -1,6 +1,6 @@
 import React from 'react';
 import { Check, Clock, Trash2 } from 'lucide-react';
-import { WatchlistItem, Movie } from '../../types/movie';
+import { WatchlistItem, MediaItem } from '../../types/media';
 import { getImageUrl } from '../../api/tmdb';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import styles from './WatchlistCard.module.css';
@@ -8,35 +8,36 @@ import styles from './WatchlistCard.module.css';
 interface WatchlistCardProps {
   item: WatchlistItem;
   theme?: 'inverted' | 'dark';
-  onSelectMovie?: (movie: Movie) => void;
+  onSelectMovie?: (item: MediaItem) => void;
 }
 
 /**
  * WatchlistCard Component
- * WHAT: Reusable presentation card for movies in "Your Reel", shared between the main page section and slide-over drawer.
- * WHY:  Eliminates duplicate card logic and guarantees that status toggling ("Mark Watched" / "Plan Again")
- *       and deletion update instantly via optimistic UI across all viewport entrypoints.
+ * WHAT: Reusable card for items in "Your Reel", displaying a "FILM" or "SERIES" tag.
+ * WHY:  Unified across both the main page section and the slide-over drawer, supporting
+ *       instant optimistic updates and composite-key removals.
  */
 export function WatchlistCard({
   item,
   theme = 'inverted',
   onSelectMovie,
 }: WatchlistCardProps) {
-  const { movie, status } = item;
+  const { key, item: media, status } = item;
   const { toggleWatchlistStatus, removeFromWatchlist } = useWatchlist();
 
-  const poster = getImageUrl(movie.poster_path, 'w300');
-  const year = movie.release_date ? movie.release_date.slice(0, 4) : '—';
-  const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'NR';
+  const poster = getImageUrl(media.posterPath, 'w300');
+  const year = media.year || '—';
+  const rating = media.rating ? media.rating.toFixed(1) : 'NR';
+  const isSeries = media.mediaType === 'tv';
 
   const handleSelect = () => {
-    onSelectMovie?.(movie);
+    onSelectMovie?.(media);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onSelectMovie?.(movie);
+      onSelectMovie?.(media);
     }
   };
 
@@ -48,18 +49,23 @@ export function WatchlistCard({
         onKeyDown={handleKeyDown}
         tabIndex={0}
         role="button"
-        aria-label={`View details for ${movie.title}`}
+        aria-label={`View details for ${media.title}`}
       >
+        {/* Medium Type Indicator Badge */}
+        <span className={styles.mediaTypeTag} aria-label={`Type: ${isSeries ? 'Series' : 'Film'}`}>
+          {isSeries ? 'Series' : 'Film'}
+        </span>
+
         {poster ? (
           <img
             src={poster}
-            alt={`Poster for ${movie.title}`}
+            alt={`Poster for ${media.title}`}
             className={styles.posterImg}
             loading="lazy"
           />
         ) : (
           <div className={styles.fallbackMonogram}>
-            {movie.title.charAt(0)}
+            {media.title.charAt(0)}
           </div>
         )}
       </div>
@@ -67,10 +73,10 @@ export function WatchlistCard({
       <div className={styles.cardContent}>
         <h3
           className={styles.cardTitle}
-          title={movie.title}
+          title={media.title}
           onClick={handleSelect}
         >
-          {movie.title}
+          {media.title}
         </h3>
 
         <div className={styles.cardMeta}>
@@ -82,11 +88,11 @@ export function WatchlistCard({
           <button
             type="button"
             className={styles.actionBtn}
-            onClick={() => toggleWatchlistStatus(movie.id)}
+            onClick={() => toggleWatchlistStatus(key)}
             aria-label={
               status === 'plan_to_watch'
-                ? `Mark ${movie.title} as watched`
-                : `Move ${movie.title} to plan to watch`
+                ? `Mark ${media.title} as watched`
+                : `Move ${media.title} to plan to watch`
             }
           >
             {status === 'plan_to_watch' ? (
@@ -105,8 +111,8 @@ export function WatchlistCard({
           <button
             type="button"
             className={styles.removeBtn}
-            onClick={() => removeFromWatchlist(movie.id)}
-            aria-label={`Remove ${movie.title} from Reel`}
+            onClick={() => removeFromWatchlist(key)}
+            aria-label={`Remove ${media.title} from Reel`}
             title="Remove from Reel"
           >
             <Trash2 size={13} aria-hidden="true" />

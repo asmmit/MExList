@@ -1,27 +1,29 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Star, Plus, Check } from 'lucide-react';
-import { Movie } from '../../types/movie';
+import { MediaItem } from '../../types/media';
 import { getImageUrl } from '../../api/tmdb';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { useTilt } from '../../hooks/useTilt';
 import styles from './MovieCard.module.css';
 
 interface MovieCardProps {
-  movie: Movie;
-  onClick?: (movie: Movie) => void;
+  movie: MediaItem;
+  onClick?: (movie: MediaItem) => void;
 }
 
 /**
  * MovieCard Component
  * WHAT: Displays a 3D tilt poster card with perspective, moving specular glare,
- *       floating floating typography layers (translateZ), and slide-up watchlist action.
- * WHY:  Delivers tactile, three-dimensional physical presence without heavy WebGL libraries.
+ *       floating typography layers (translateZ), media tag badge (FILM / SERIES),
+ *       and slide-up watchlist action.
+ * WHY:  Delivers tactile, three-dimensional physical presence and immediate medium clarity.
  */
 export function MovieCard({ movie, onClick }: MovieCardProps) {
   const [imageError, setImageError] = useState(false);
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
-  const inWatchlist = isInWatchlist(movie.id);
+  const inWatchlist = isInWatchlist(movie.mediaType, movie.id);
+  const isSeries = movie.mediaType === 'tv';
 
   // Bind 3D perspective tilt & specular glare highlight
   const { elementRef, glareRef } = useTilt<HTMLElement>({
@@ -29,14 +31,10 @@ export function MovieCard({ movie, onClick }: MovieCardProps) {
     perspective: 1000,
   });
 
-  const posterUrl = getImageUrl(movie.poster_path, 'w500');
-
-  const releaseYear = movie.release_date
-    ? movie.release_date.slice(0, 4)
-    : '—';
-
-  const ratingFormatted = movie.vote_average
-    ? movie.vote_average.toFixed(1)
+  const posterUrl = getImageUrl(movie.posterPath, 'w500');
+  const releaseYear = movie.year || '—';
+  const ratingFormatted = movie.rating
+    ? movie.rating.toFixed(1)
     : 'NR';
 
   const handleClick = () => {
@@ -55,7 +53,7 @@ export function MovieCard({ movie, onClick }: MovieCardProps) {
   const handleWatchlistClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (inWatchlist) {
-      removeFromWatchlist(movie.id);
+      removeFromWatchlist(movie.id, movie.mediaType);
     } else {
       addToWatchlist(movie);
     }
@@ -77,9 +75,17 @@ export function MovieCard({ movie, onClick }: MovieCardProps) {
 
       {/* Poster Container with Parallax Depth */}
       <div className={styles.posterWrapper}>
+        {/* Medium Type Indicator Badge */}
+        <span
+          className={styles.mediaTag}
+          aria-label={`Type: ${isSeries ? 'Series' : 'Film'}`}
+        >
+          {isSeries ? 'Series' : 'Film'}
+        </span>
+
         {posterUrl && !imageError ? (
           <motion.img
-            layoutId={`poster-${movie.id}`}
+            layoutId={`poster-${movie.mediaType}-${movie.id}`}
             src={posterUrl}
             alt={`Poster for ${movie.title}`}
             className={styles.posterImg}

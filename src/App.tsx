@@ -17,7 +17,7 @@ import { CustomCursor } from './components/CustomCursor/CustomCursor';
 import { ToastProvider } from './context/ToastContext';
 import { WatchlistProvider } from './hooks/useWatchlist';
 import { ToastContainer } from './components/Toast/ToastContainer';
-import { Movie } from './types/movie';
+import { MediaItem } from './types/media';
 
 /**
  * ExplorerApp Component
@@ -39,7 +39,7 @@ import { Movie } from './types/movie';
  */
 function ExplorerApp() {
   const [rawQuery, setRawQuery] = useState('');
-  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [selectedMovie, setSelectedMovie] = useState<MediaItem | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const debouncedQuery = useDebounce(rawQuery, 300);
 
@@ -61,7 +61,7 @@ function ExplorerApp() {
     setRawQuery('');
   };
 
-  const handleSelectMovie = (movie: Movie) => {
+  const handleSelectMovie = (movie: MediaItem) => {
     setSelectedMovie(movie);
   };
 

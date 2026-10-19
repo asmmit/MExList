@@ -1,4 +1,6 @@
-import { Movie, AsyncStatus } from '../../types/movie';
+import { useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { MediaItem, AsyncStatus } from '../../types/media';
 import { MovieCard } from '../MovieCard/MovieCard';
 import { SkeletonGrid } from '../Skeleton/SkeletonCard';
 import { EmptyState } from '../EmptyState/EmptyState';
@@ -6,8 +8,10 @@ import { ErrorState } from '../ErrorState/ErrorState';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import styles from './MovieGrid.module.css';
 
+type MediaFilter = 'all' | 'movie' | 'tv';
+
 interface MovieGridProps {
-  movies: Movie[];
+  movies: MediaItem[];
   status: AsyncStatus;
   error: string | null;
   query: string;
@@ -16,25 +20,35 @@ interface MovieGridProps {
   onLoadMore: () => void;
   onRetry: () => void;
   onClearSearch: () => void;
-  onSelectMovie?: (movie: Movie) => void;
+  onSelectMovie?: (movie: MediaItem) => void;
   isOffline?: boolean;
   isPaused?: boolean; // Pauses infinite scroll when slide-over drawer or modal is open
 }
+
+const FILTER_TABS: { value: MediaFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'movie', label: 'Movies' },
+  { value: 'tv', label: 'Series' },
+];
 
 /**
  * MovieGrid Component ("Discover")
  *
  * ARCHITECTURAL NOTES (Interview & Assessment Explainability):
- * 1. WHY THE SENTINEL IS THE LAST ELEMENT OF DISCOVER ONLY:
+ * 1. CLIENT-SIDE SEGMENTED FILTERING:
+ *    Filter switching ("All" | "Movies" | "Series") is performed entirely in memory
+ *    over the loaded results via `useMemo`. This guarantees 0 network refetches, no layout
+ *    jank, and maintains current scroll position without resetting pagination or debounce state.
+ *
+ * 2. COMPOSITE KEY RECONCILIATION:
+ *    Cards are keyed by `${movie.mediaType}-${movie.id}` to eliminate React reconciliation
+ *    conflicts should TMDB return identical auto-increment IDs for a movie and a TV series.
+ *
+ * 3. WHY THE SENTINEL IS THE LAST ELEMENT OF DISCOVER ONLY:
  *    The infinite scroll sentinel MUST reside strictly as the trailing element of this
  *    Discover results section. If any subsequent sections (like the Watchlist) sit below an
  *    infinite stream, the IntersectionObserver fires continuously as the user approaches the
  *    bottom, perpetually appending new movies and making subsequent sections unreachable.
- *
- * 2. PAUSING WHILE DRAWER IS OPEN:
- *    When `isPaused` is true (e.g. while the Reel drawer is open), `hasMore` is masked as false
- *    and `isLoading` is held true, instantly disconnecting the observer to prevent wasteful
- *    background network requests.
  */
 export function MovieGrid({
   movies,
@@ -50,6 +64,14 @@ export function MovieGrid({
   isOffline,
   isPaused = false,
 }: MovieGridProps) {
+  const [filter, setFilter] = useState<MediaFilter>('all');
+
+  // Client-side filtering of loaded results - avoids refetching and scroll reset
+  const filteredMovies = useMemo(() => {
+    if (filter === 'all') return movies;
+    return movies.filter((m) => m.mediaType === filter);
+  }, [movies, filter]);
+
   // Infinite scroll sentinel hook (paused when drawer or modal is active)
   const sentinelRef = useInfiniteScroll({
     onLoadMore,
@@ -61,12 +83,14 @@ export function MovieGrid({
   // Initial loading state
   if (status === 'loading') {
     return (
-      <section className={styles.gridSection} id="discover-section" aria-label="Discover movies">
+      <section className={styles.gridSection} id="discover-section" aria-label="Discover cinema and series">
         <div className={styles.header}>
-          <h2 className={styles.title}>
-            {query.trim() ? `Searching “${query}”` : 'Curated Discoveries'}
-          </h2>
-          <span className={styles.count}>Scanning Archives...</span>
+          <div className={styles.headerLeft}>
+            <h2 className={styles.title}>
+              {query.trim() ? `Searching “${query}”` : 'Curated Discoveries'}
+            </h2>
+            <span className={styles.count}>Scanning Archives...</span>
+          </div>
         </div>
         <SkeletonGrid count={12} />
       </section>
@@ -92,24 +116,76 @@ export function MovieGrid({
   }
 
   return (
-    <section className={styles.gridSection} id="discover-section" aria-label="Discover movies">
+    <section className={styles.gridSection} id="discover-section" aria-label="Discover cinema and series">
       <div className={styles.header}>
-        <h2 className={styles.title}>
-          {query.trim() ? `Results for “${query}”` : 'Curated Discoveries'}
-        </h2>
-        <span className={styles.count}>
-          {totalResults.toLocaleString()} {totalResults === 1 ? 'Title' : 'Titles'} Available
-        </span>
+        <div className={styles.headerLeft}>
+          <h2 className={styles.title}>
+            {query.trim() ? `Results for “${query}”` : 'Curated Discoveries'}
+          </h2>
+          <span className={styles.count}>
+            {filter === 'all'
+              ? `${totalResults.toLocaleString()} ${totalResults === 1 ? 'Title' : 'Titles'} Available`
+              : `${filteredMovies.length} ${filter === 'tv' ? 'Series' : 'Films'} Shown`}
+          </span>
+        </div>
+
+        {/* Animated Segmented Filter Control */}
+        <div className={styles.headerRight}>
+          <nav
+            className={styles.segmentedControl}
+            role="tablist"
+            aria-label="Filter media by type"
+          >
+            {FILTER_TABS.map((tab) => {
+              const isActive = filter === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={styles.segmentBtn}
+                  data-active={isActive}
+                  onClick={() => setFilter(tab.value)}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeMediaFilter"
+                      className={styles.segmentIndicator}
+                      transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                    />
+                  )}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       </div>
 
       <div className={styles.grid}>
-        {movies.map((movie) => (
-          <MovieCard
-            key={movie.id}
-            movie={movie}
-            onClick={onSelectMovie}
-          />
-        ))}
+        {filteredMovies.length > 0 ? (
+          filteredMovies.map((movie) => (
+            <MovieCard
+              key={`${movie.mediaType}-${movie.id}`}
+              movie={movie}
+              onClick={onSelectMovie}
+            />
+          ))
+        ) : (
+          <div className={styles.emptyFilteredState}>
+            <p className={styles.emptyFilteredText}>
+              No {filter === 'tv' ? 'series' : 'movies'} found in currently loaded batch.
+            </p>
+            <button
+              type="button"
+              className={styles.resetFilterBtn}
+              onClick={() => setFilter('all')}
+            >
+              Show All Titles
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Infinite Scroll Sentinel (Must be strictly the last item in Discover) */}

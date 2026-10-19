@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Compass } from 'lucide-react';
 import { useWatchlist } from '../../hooks/useWatchlist';
-import { Movie, WatchlistStatus } from '../../types/movie';
+import { MediaItem, WatchlistStatus } from '../../types/media';
 import { WatchlistCard } from './WatchlistCard';
 import { scrollToTarget } from '../../hooks/useLenis';
 import styles from './WatchlistSection.module.css';
 
 interface WatchlistSectionProps {
-  onSelectMovie?: (movie: Movie) => void;
+  onSelectMovie?: (movie: MediaItem) => void;
 }
 
 /**
@@ -119,7 +119,7 @@ export function WatchlistSection({ onSelectMovie }: WatchlistSectionProps) {
           <div className={styles.grid}>
             {currentList.map((item) => (
               <WatchlistCard
-                key={item.movie.id}
+                key={item.key}
                 item={item}
                 theme="inverted"
                 onSelectMovie={onSelectMovie}

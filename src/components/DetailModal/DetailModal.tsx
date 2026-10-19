@@ -1,13 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Star, Clock, Calendar, Check, Plus } from 'lucide-react';
-import { Movie, MovieDetails } from '../../types/movie';
-import { getMovieDetails, getImageUrl } from '../../api/tmdb';
+import { X, Star, Clock, Calendar, Check, Plus, Tv, Film } from 'lucide-react';
+import { MediaItem, MediaDetails } from '../../types/media';
+import { getMediaDetails, getImageUrl } from '../../api/tmdb';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import styles from './DetailModal.module.css';
 
 interface DetailModalProps {
-  movie: Movie | null;
+  movie: MediaItem | null;
   onClose: () => void;
 }
 
@@ -24,19 +24,21 @@ function formatRuntime(minutes: number | null): string {
 /**
  * DetailModal Component
  * WHAT: Full-feature modal with Framer Motion shared-element poster expansion,
- *       deep cast rosters, runtime metadata, focus trapping, and body scroll lock.
- * WHY:  Enriches discovery with narrative context and seamless spring motion.
+ *       deep cast rosters, runtime metadata, series-specific seasons/episodes/creator,
+ *       focus trapping, and body scroll lock.
+ * WHY:  Enriches discovery with narrative context and seamless spring motion across films and series.
  */
 export function DetailModal({ movie, onClose }: DetailModalProps) {
-  const [details, setDetails] = useState<MovieDetails | null>(null);
+  const [details, setDetails] = useState<MediaDetails | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const { isInWatchlist, addToWatchlist, removeFromWatchlist, getWatchlistStatus, toggleWatchlistStatus } =
     useWatchlist();
 
-  const inWatchlist = movie ? isInWatchlist(movie.id) : false;
-  const currentStatus = movie ? getWatchlistStatus(movie.id) : null;
+  const isSeries = movie?.mediaType === 'tv';
+  const inWatchlist = movie ? isInWatchlist(movie.mediaType, movie.id) : false;
+  const currentStatus = movie ? getWatchlistStatus(movie.mediaType, movie.id) : null;
 
   // Lock body scroll while modal is active
   useEffect(() => {
@@ -88,7 +90,7 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [movie, onClose]);
 
-  // Fetch deep details and credits on movie selection
+  // Fetch deep details and credits on media selection
   useEffect(() => {
     if (!movie) {
       setDetails(null);
@@ -101,11 +103,11 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
     async function loadData() {
       try {
         if (!movie) return;
-        const res = await getMovieDetails(movie.id, controller.signal);
+        const res = await getMediaDetails(movie.mediaType, movie.id, controller.signal);
         setDetails(res);
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        console.error('Failed to load movie details:', err);
+        console.error('Failed to load media details:', err);
       } finally {
         setLoadingDetails(false);
       }
@@ -120,10 +122,10 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
 
   if (!movie) return null;
 
-  const posterUrl = getImageUrl(movie.poster_path, 'w780');
-  const releaseYear = movie.release_date ? movie.release_date.slice(0, 4) : '—';
-  const director = details?.credits?.crew?.find((c) => c.job === 'Director')?.name;
+  const posterUrl = getImageUrl(movie.posterPath, 'w780');
+  const releaseYear = movie.year || '—';
   const topCast = details?.credits?.cast?.slice(0, 6) || [];
+  const creatorOrDirector = details?.creator;
 
   return (
     <AnimatePresence>
@@ -162,7 +164,7 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
             <div className={styles.posterCol}>
               {posterUrl ? (
                 <motion.img
-                  layoutId={`poster-${movie.id}`}
+                  layoutId={`poster-${movie.mediaType}-${movie.id}`}
                   src={posterUrl}
                   alt={`Cover for ${movie.title}`}
                   className={styles.modalPoster}
@@ -184,6 +186,10 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
             {/* Details & Narrative Column */}
             <div className={styles.detailsCol}>
               <div className={styles.headerInfo}>
+                <span className={styles.mediaBadge}>
+                  {isSeries ? 'Series' : 'Film'}
+                </span>
+
                 {details?.tagline && (
                   <p className={styles.tagline}>&ldquo;{details.tagline}&rdquo;</p>
                 )}
@@ -200,20 +206,43 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
                   <span className={styles.metaItem}>
                     <Star size={13} fill="currentColor" aria-hidden="true" />
                     <span>
-                      {movie.vote_average ? movie.vote_average.toFixed(1) : 'NR'} / 10
+                      {movie.rating ? movie.rating.toFixed(1) : 'NR'} / 10
                     </span>
                   </span>
 
+                  {/* Runtime / Duration representation */}
                   <span className={styles.metaItem}>
                     <Clock size={13} aria-hidden="true" />
                     <span>
-                      {loadingDetails ? 'Calculating runtime...' : formatRuntime(details?.runtime ?? null)}
+                      {loadingDetails
+                        ? 'Calculating...'
+                        : isSeries
+                        ? details?.runtime
+                          ? `${details.runtime}m / ep`
+                          : 'Variable runtime'
+                        : formatRuntime(details?.runtime ?? null)}
                     </span>
                   </span>
 
-                  {director && (
+                  {/* Series-Specific: Seasons & Episodes */}
+                  {isSeries && details?.numberOfSeasons && (
                     <span className={styles.metaItem}>
-                      <span>Directed by <strong>{director}</strong></span>
+                      <Tv size={13} aria-hidden="true" />
+                      <span>
+                        {details.numberOfSeasons} {details.numberOfSeasons === 1 ? 'Season' : 'Seasons'}
+                        {details.numberOfEpisodes ? ` (${details.numberOfEpisodes} eps)` : ''}
+                      </span>
+                    </span>
+                  )}
+
+                  {/* Creator / Director metadata */}
+                  {creatorOrDirector && (
+                    <span className={styles.metaItem}>
+                      {!isSeries && <Film size={13} aria-hidden="true" />}
+                      <span>
+                        {isSeries ? 'Created by ' : 'Directed by '}
+                        <strong>{creatorOrDirector}</strong>
+                      </span>
                     </span>
                   )}
                 </div>
@@ -265,7 +294,7 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
                   data-active={inWatchlist}
                   onClick={() => {
                     if (inWatchlist) {
-                      removeFromWatchlist(movie.id);
+                      removeFromWatchlist(movie.id, movie.mediaType);
                     } else {
                       addToWatchlist(movie);
                     }
@@ -288,7 +317,7 @@ export function DetailModal({ movie, onClose }: DetailModalProps) {
                   <button
                     type="button"
                     className={styles.statusToggleBtn}
-                    onClick={() => toggleWatchlistStatus(movie.id)}
+                    onClick={() => toggleWatchlistStatus(movie.id, movie.mediaType)}
                   >
                     <span>
                       {currentStatus === 'plan_to_watch'
