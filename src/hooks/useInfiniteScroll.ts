@@ -6,33 +6,56 @@ interface UseInfiniteScrollOptions {
   isLoading: boolean;
   rootMargin?: string;
   threshold?: number;
+  debounceMs?: number;
 }
 
 /**
  * useInfiniteScroll Hook
  * WHAT: Attaches an IntersectionObserver to a sentinel DOM element positioned at the end of the list.
  * WHY:  Enables declarative, performant pagination without polluting window scroll event listeners.
- *       Pre-fetches the next page when the user is 300px away from the bottom to ensure
- *       a smooth, unbroken scrolling experience.
+ *       Includes strict request locking, debouncing, and a 200px buffer to prefetch before the bottom
+ *       while eliminating duplicate concurrent requests during rapid scrolling.
  */
 export function useInfiniteScroll({
   onLoadMore,
   hasMore,
   isLoading,
-  rootMargin = '300px',
-  threshold = 0.1,
+  rootMargin = '200px',
+  threshold = 0.05,
+  debounceMs = 120,
 }: UseInfiniteScrollOptions) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const isLockedRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync request lock with loading state
+  useEffect(() => {
+    if (!isLoading) {
+      isLockedRef.current = false;
+    }
+  }, [isLoading]);
 
   const handleIntersect = useCallback(
     (entries: IntersectionObserverEntry[]) => {
       const [entry] = entries;
-      // Trigger only if sentinel is visible, more items exist, and not currently fetching
-      if (entry.isIntersecting && hasMore && !isLoading) {
-        onLoadMore();
+
+      // Strict guard condition: only proceed if sentinel intersects, not already loading, more data exists, and lock is free
+      if (!entry || !entry.isIntersecting) return;
+      if (isLoading || !hasMore || isLockedRef.current) return;
+
+      // Debounce trigger to avoid firing duplicate concurrent requests during rapid scrolling
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
+
+      debounceTimerRef.current = setTimeout(() => {
+        if (!isLoading && hasMore && !isLockedRef.current) {
+          isLockedRef.current = true;
+          onLoadMore();
+        }
+      }, debounceMs);
     },
-    [onLoadMore, hasMore, isLoading]
+    [onLoadMore, hasMore, isLoading, debounceMs]
   );
 
   useEffect(() => {
@@ -41,13 +64,16 @@ export function useInfiniteScroll({
 
     const observer = new IntersectionObserver(handleIntersect, {
       root: null, // viewport
-      rootMargin,
+      rootMargin, // 200px threshold buffer
       threshold,
     });
 
     observer.observe(sentinel);
 
     return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
       observer.disconnect();
     };
   }, [handleIntersect, hasMore, rootMargin, threshold]);

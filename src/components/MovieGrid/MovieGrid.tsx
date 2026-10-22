@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { MediaItem, AsyncStatus } from '../../types/media';
 import { MovieCard } from '../MovieCard/MovieCard';
-import { SkeletonGrid } from '../Skeleton/SkeletonCard';
+import { SkeletonCard, SkeletonGrid } from '../Skeleton/SkeletonCard';
 import { EmptyState } from '../EmptyState/EmptyState';
 import { ErrorState } from '../ErrorState/ErrorState';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
@@ -40,15 +40,13 @@ const FILTER_TABS: { value: MediaFilter; label: string }[] = [
  *    over the loaded results via `useMemo`. This guarantees 0 network refetches, no layout
  *    jank, and maintains current scroll position without resetting pagination or debounce state.
  *
- * 2. COMPOSITE KEY RECONCILIATION:
- *    Cards are keyed by `${movie.mediaType}-${movie.id}` to eliminate React reconciliation
- *    conflicts should TMDB return identical auto-increment IDs for a movie and a TV series.
+ * 2. COMPOSITE KEY RECONCILIATION & MEMOIZATION:
+ *    Cards are keyed by `${movie.mediaType}-${movie.id}-${index}` and wrapped in React.memo
+ *    to eliminate re-renders and React reconciliation conflicts during infinite scrolling.
  *
- * 3. WHY THE SENTINEL IS THE LAST ELEMENT OF DISCOVER ONLY:
- *    The infinite scroll sentinel MUST reside strictly as the trailing element of this
- *    Discover results section. If any subsequent sections (like the Watchlist) sit below an
- *    infinite stream, the IntersectionObserver fires continuously as the user approaches the
- *    bottom, perpetually appending new movies and making subsequent sections unreachable.
+ * 3. PREVENTING LAYOUT COLLAPSE & FOOTER FLASHING:
+ *    While status is 'loading_more', placeholder SkeletonCards are appended directly to the grid,
+ *    reserving vertical space and preventing the footer from jumping or flashing prematurely.
  */
 export function MovieGrid({
   movies,
@@ -72,12 +70,12 @@ export function MovieGrid({
     return movies.filter((m) => m.mediaType === filter);
   }, [movies, filter]);
 
-  // Infinite scroll sentinel hook (paused when drawer or modal is active)
+  // Infinite scroll sentinel hook (with strict locking, debouncing, and 200px threshold buffer)
   const sentinelRef = useInfiniteScroll({
     onLoadMore,
     hasMore: hasMore && !isPaused,
     isLoading: status === 'loading' || status === 'loading_more' || isPaused,
-    rootMargin: '400px',
+    rootMargin: '200px',
   });
 
   // Initial loading state
@@ -165,9 +163,9 @@ export function MovieGrid({
 
       <div className={styles.grid}>
         {filteredMovies.length > 0 ? (
-          filteredMovies.map((movie) => (
+          filteredMovies.map((movie, index) => (
             <MovieCard
-              key={`${movie.mediaType}-${movie.id}`}
+              key={`${movie.mediaType}-${movie.id}-${index}`}
               movie={movie}
               onClick={onSelectMovie}
             />
@@ -185,6 +183,15 @@ export function MovieGrid({
               Show All Titles
             </button>
           </div>
+        )}
+
+        {/* Prevent layout collapse & footer flashing while fetching subsequent batches */}
+        {status === 'loading_more' && (
+          <>
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <SkeletonCard key={`more-skeleton-${idx}`} />
+            ))}
+          </>
         )}
       </div>
 

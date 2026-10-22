@@ -71,16 +71,6 @@ export function Hero({ searchQuery, onSearchChange, onSearchClear }: HeroProps) 
       <div className={styles.spotlight} aria-hidden="true" />
 
       <div className={styles.content}>
-        <motion.div
-          className={styles.categoryTag}
-          initial={prefersReduced ? false : { opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <span className={styles.tagDot} aria-hidden="true" />
-          <span>The Archival Collection</span>
-        </motion.div>
-
         {/* Masked Line-by-Line Word Reveal */}
         <h1 className={styles.headline}>
           {HEADLINE_LINES.map((line, lineIdx) => (

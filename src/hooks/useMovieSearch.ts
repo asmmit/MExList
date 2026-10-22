@@ -33,6 +33,7 @@ export function useMovieSearch(query: string): UseMovieSearchResult {
 
   // Active AbortController instance across renders
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isFetchingRef = useRef<boolean>(false);
 
   // Track online/offline browser state
   useEffect(() => {
@@ -52,11 +53,12 @@ export function useMovieSearch(query: string): UseMovieSearchResult {
   useEffect(() => {
     setPage(1);
     setResults([]);
+    isFetchingRef.current = false;
   }, [query]);
 
   // Primary Fetch Orchestrator
   const fetchMovies = useCallback(async (searchQuery: string, pageNum: number) => {
-    // 1. Abort existing in-flight request if present
+    // 1. Abort existing in-flight request if present (especially on new query)
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -64,6 +66,7 @@ export function useMovieSearch(query: string): UseMovieSearchResult {
     // 2. Instantiate a fresh AbortController for this request
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    isFetchingRef.current = true;
 
     // 3. Transition status appropriately
     setStatus(pageNum === 1 ? 'loading' : 'loading_more');
@@ -84,9 +87,11 @@ export function useMovieSearch(query: string): UseMovieSearchResult {
         if (pageNum === 1) {
           return response.results;
         }
-        // Deduplicate movies by ID when appending subsequent pages
-        const existingIds = new Set(prev.map((m) => m.id));
-        const uniqueNew = response.results.filter((m) => !existingIds.has(m.id));
+        // Deduplicate media items by composite key when appending subsequent pages
+        const existingKeys = new Set(prev.map((m) => `${m.mediaType || 'movie'}-${m.id}`));
+        const uniqueNew = response.results.filter(
+          (m) => !existingKeys.has(`${m.mediaType || 'movie'}-${m.id}`)
+        );
         return [...prev, ...uniqueNew];
       });
 
@@ -108,6 +113,10 @@ export function useMovieSearch(query: string): UseMovieSearchResult {
         err instanceof Error ? err.message : 'An unexpected error occurred while fetching movies.';
       setError(errorMessage);
       setStatus('error');
+    } finally {
+      if (abortControllerRef.current === controller) {
+        isFetchingRef.current = false;
+      }
     }
   }, []);
 
@@ -123,11 +132,12 @@ export function useMovieSearch(query: string): UseMovieSearchResult {
     };
   }, [query, page, fetchMovies]);
 
-  // Action: Load Next Page
+  // Action: Load Next Page with strict locking guard
   const loadMore = useCallback(() => {
-    if (status !== 'loading' && status !== 'loading_more' && page < totalPages) {
-      setPage((prev) => prev + 1);
+    if (isFetchingRef.current || status === 'loading' || status === 'loading_more' || page >= totalPages) {
+      return;
     }
+    setPage((prev) => prev + 1);
   }, [status, page, totalPages]);
 
   // Action: Manual Retry

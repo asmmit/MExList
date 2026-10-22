@@ -13,7 +13,6 @@ import { BackToTop } from './components/BackToTop/BackToTop';
 import { DetailModal } from './components/DetailModal/DetailModal';
 import { Footer } from './components/Footer/Footer';
 import { ScrollProgress } from './components/ScrollProgress/ScrollProgress';
-import { CustomCursor } from './components/CustomCursor/CustomCursor';
 import { ToastProvider } from './context/ToastContext';
 import { WatchlistProvider } from './hooks/useWatchlist';
 import { ToastContainer } from './components/Toast/ToastContainer';
@@ -71,9 +70,6 @@ function ExplorerApp() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      {/* Dynamic Blend-Mode Custom Cursor */}
-      <CustomCursor />
-
       {/* Top Hairline Scroll Progress Bar */}
       <ScrollProgress />
 
@@ -95,14 +91,19 @@ function ExplorerApp() {
       {/* 3. Kinetic Horizontal Marquee Ribbon */}
       <Marquee />
 
-      {/* 4. Discover Results Grid (Infinite scroll sentinel sits strictly as the trailing element here) */}
+      {/* 4. Discover Results Grid (Centered max-w-7xl mx-auto px-4 w-full container) */}
       <main
         style={{
           flex: 1,
-          padding: '2rem var(--content-padding-x)',
-          maxWidth: 'var(--max-width)',
-          margin: '0 auto',
           width: '100%',
+          maxWidth: '80rem',
+          margin: '0 auto',
+          padding: '2rem 1rem',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
         }}
       >
         <MovieGrid

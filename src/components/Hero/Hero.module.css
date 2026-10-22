@@ -77,29 +77,6 @@
   gap: 2.25rem;
 }
 
-.categoryTag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.35rem 1rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  background-color: rgba(18, 18, 18, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  font-family: var(--font-ui);
-  font-size: var(--text-label);
-  letter-spacing: var(--tracking-widest);
-  text-transform: uppercase;
-  color: var(--fg-muted);
-}
-
-.tagDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background-color: var(--fg);
-}
 
 .headline {
   font-family: var(--font-display);

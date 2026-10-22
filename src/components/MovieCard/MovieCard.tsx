@@ -19,7 +19,7 @@ interface MovieCardProps {
  *       and slide-up watchlist action.
  * WHY:  Delivers tactile, three-dimensional physical presence and immediate medium clarity.
  */
-export function MovieCard({ movie, onClick }: MovieCardProps) {
+export const MovieCard = React.memo(function MovieCard({ movie, onClick }: MovieCardProps) {
   const [imageError, setImageError] = useState(false);
   const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
   const inWatchlist = isInWatchlist(movie.mediaType, movie.id);
@@ -147,4 +147,4 @@ export function MovieCard({ movie, onClick }: MovieCardProps) {
       </div>
     </article>
   );
-}
+});

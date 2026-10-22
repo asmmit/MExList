@@ -55,9 +55,9 @@
   --radius-lg: 24px;
   --radius-pill: 9999px;
 
-  /* Layout & Grid */
-  --max-width: 1440px;
-  --content-padding-x: clamp(1rem, 4vw, 3rem);
+  /* Layout & Grid (Centered max-w-7xl / px-4 geometry) */
+  --max-width: 80rem;
+  --content-padding-x: 1rem;
   --grid-gap: clamp(1rem, 2vw, 1.75rem);
 
   /* Transitions & Animation Easing */
